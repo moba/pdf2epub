@@ -76,11 +76,88 @@ def save_images(images: dict, image_dir: Path) -> None:
     else:
         print("No valid images were found to save")
 
+def seed_description(output_dir: Path, pdf_path, language: str = "en") -> Path | None:
+    """Pre-fill description.json for mark2epub from the PDF's own metadata.
+
+    Never overwrites an existing description.json (it may hold curated
+    metadata). Falls back to the filename stem / placeholders when the PDF
+    carries no Title/Author. Returns the written path, or None if skipped."""
+    desc_path = Path(output_dir) / "description.json"
+    if desc_path.exists():
+        return None
+
+    title = author = None
+    try:
+        import pypdfium2 as pdfium
+        doc = pdfium.PdfDocument(str(pdf_path))
+        title = (doc.get_metadata_value("Title") or "").strip() or None
+        author = (doc.get_metadata_value("Author") or "").strip() or None
+    except Exception as e:
+        print(f"Note: could not read PDF metadata from {pdf_path}: {e}")
+
+    desc = {
+        "metadata": {
+            "dc:title": title or Path(pdf_path).stem,
+            "dc:creator": author or "Unknown Author",
+            "dc:identifier": f"id-{Path(pdf_path).stem}",
+            "dc:language": language or "en",
+            "dc:rights": "All rights reserved",
+            "dc:publisher": "",
+            "dc:date": "",
+            "dc:source": "",
+        },
+        "default_css": ["style.css"],
+        "cover_image": None,
+        "accessibility": {"accessibilitySummary": ""},
+        "chapters": [],
+    }
+    with open(desc_path, "w", encoding="utf-8") as f:
+        json.dump(desc, f, indent=2, ensure_ascii=False)
+    print(f"Seeded description.json (review dc:* fields, especially dc:language): {desc_path}")
+    return desc_path
+
+
+def build_marker_config(
+    max_pages: int = None,
+    start_page: int = None,
+    use_llm: bool = False,
+    llm_service: str = None,
+    paginate: bool = False,
+    no_images: bool = False,
+) -> tuple[dict, str | None]:
+    """Map our CLI options to the config keys marker-pdf 1.x actually reads.
+    Returns (config dict, llm_service class path or None)."""
+    config = {}
+    # marker 1.x needs an explicit list of page indices; there is no
+    # "start to end" shorthand. start_page without max_pages can't be built
+    # without knowing the page count, so we warn and process all pages.
+    if max_pages is not None:
+        s = start_page or 0
+        config["page_range"] = list(range(s, s + max_pages))
+    elif start_page is not None:
+        print(
+            "Warning: --start-page requires --max-pages in marker-pdf 1.x "
+            "(no open-ended page range is supported). Processing all pages."
+        )
+    if use_llm:
+        config["use_llm"] = True
+    if paginate:
+        config["paginate_output"] = True
+    if no_images:
+        config["extract_images"] = False
+    return config, (llm_service if use_llm else None)
+
+
 def convert_pdf(
     input_path: str,
     output_dir: Path,
     max_pages: int = None,
     start_page: int = None,
+    language: str = None,
+    use_llm: bool = False,
+    llm_service: str = None,
+    paginate: bool = False,
+    no_images: bool = False,
 ) -> None:
     """
     Convert a single PDF file to markdown format with enhanced image handling.
@@ -91,21 +168,14 @@ def convert_pdf(
 
         models = create_model_dict()
 
-        # Build page_range config. marker-pdf 1.x requires an explicit list of
-        # page indices; there is no "start to end" shorthand. If start_page is
-        # given without max_pages we cannot construct the range without knowing
-        # the document's page count, so we warn and process all pages instead.
-        config = {}
-        if max_pages is not None:
-            s = start_page or 0
-            config["page_range"] = list(range(s, s + max_pages))
-        elif start_page is not None:
-            print(
-                f"Warning: --start-page requires --max-pages in marker-pdf 1.x "
-                f"(no open-ended page range is supported). Processing all pages."
-            )
+        config, llm_service_path = build_marker_config(
+            max_pages=max_pages, start_page=start_page, use_llm=use_llm,
+            llm_service=llm_service, paginate=paginate, no_images=no_images)
 
-        converter = PdfConverter(config=config, artifact_dict=models)
+        converter_kwargs = {}
+        if llm_service_path:
+            converter_kwargs["llm_service"] = llm_service_path
+        converter = PdfConverter(config=config, artifact_dict=models, **converter_kwargs)
         rendered = converter(input_path)
 
         full_text = rendered.markdown
@@ -125,6 +195,9 @@ def convert_pdf(
         with open(meta_output, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2)
         print(f"Metadata saved to: {meta_output}")
+
+        # Pre-fill description.json for the EPUB build
+        seed_description(output_dir, input_path, language=language or "en")
 
         # Enhanced image handling
         try:

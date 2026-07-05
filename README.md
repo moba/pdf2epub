@@ -1,105 +1,80 @@
 # PDF2EPUB 📚
 
-Convert PDF files to nicely structured Markdown and EPUB format with intelligent layout detection.
+Convert PDF files to nicely structured Markdown and accessible EPUB 3 with
+intelligent layout detection.
 
 ## ✨ Features
 
-- 📖 Smart layout detection for books and academic papers
+- 📖 Smart layout detection for books and academic papers (marker-pdf 1.x)
 - 🔍 Advanced text extraction and OCR capabilities
 - 📊 Table detection and formatting
 - 🖼️ Image extraction and optimization
 - 📝 Clean markdown output with preserved structure
-- 📱 EPUB generation with customizable styling
+- 📱 EPUB 3 generation with landmarks, hierarchical TOC, and page-list navigation
+- ♿ Accessibility built in: language tags from `dc:language`, schema.org
+  accessibility metadata, popup footnote semantics, alt-text drafting via Claude
 - 🌍 Multi-language support
-- 🚀 GPU acceleration support (NVIDIA & AMD)
-- 🍎 Apple Silicon support
+- 🚀 GPU acceleration support (NVIDIA, AMD, Apple Silicon)
 
 ## 🛠️ Dependencies
 
-- Python 3.9+
-- PyTorch (with CUDA/ROCm support for GPU acceleration)
-- marker-pdf==0.3.10
-- transformers==4.45.2
-- markdown==3.7
+- Python 3.10+
+- PyTorch (with CUDA/ROCm/MPS support for GPU acceleration)
+- marker-pdf 1.10.x
+- markdown, latex2mathml, Pillow, pypdfium2, regex
+- Optional: `anthropic` (alt-text drafting), `epubcheck` (validation)
 
 ## 💻 Installation
 
-1. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Install PyTorch:
-- For NVIDIA GPUs, install with CUDA support:
-```bash
-pip install torch torchvision torchaudio
-```
-
-- For AMD GPUs, install with ROCm support:
-```bash
-pip3 uninstall torch torchvision torchaudio
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
-```
-
-- For Apple Silicon, install with MPS support:
-```bash
-pip3 uninstall torch torchvision torchaudio
-pip3 install --pre torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/nightly/cpu
-```
-
-3. Verify GPU support:
-```python
-import torch
-print(torch.__version__)  # PyTorch version
-print(torch.cuda.is_available())  # Should return True for NVIDIA
-print(torch.mps.is_available())  # Should return True for Apple Silicon
-print(torch.version.hip)  # Should print ROCm version for AMD
-```
+For GPU-specific PyTorch builds see [pytorch.org](https://pytorch.org/get-started/locally/).
 
 ## 🚀 Usage
 
 ### Basic Usage
 
-Convert a single PDF file:
 ```bash
-python main.py input.pdf
+python main.py input.pdf            # single file
+python main.py input_directory/    # every PDF in a directory
 ```
 
-Convert all PDFs in a directory:
-```bash
-python main.py input_directory/
+### Options
+
 ```
-
-### Advanced Options
-
-```bash
 python main.py [input_path] [output_path] [options]
 
-Options:
-  --batch-multiplier INT    Batch size multiplier for memory/speed tradeoff (default: 2)
-  --max-pages INT          Maximum number of pages to process
-  --start-page INT         Page number to start from
-  --langs STRING           Comma-separated list of languages in document
-  --skip-epub             Skip EPUB generation, only create markdown
-  --skip-md               Skip markdown generation, use existing markdown files
+  --max-pages INT      Maximum number of pages to process
+  --start-page INT     Page to start from (requires --max-pages)
+  --skip-epub          Only create markdown
+  --skip-md            Reuse existing markdown, only build the EPUB
+  --langs STRING       Language(s), first becomes dc:language (e.g. "de")
+  --use-llm            marker LLM mode for higher-quality structure
+  --llm-service STR    e.g. "marker.services.claude.ClaudeService"
+  --paginate           Keep page boundaries as {N}---- separators
+  --no-images          Skip image extraction
+  --yes, -y            Non-interactive EPUB build (description.json as-is)
 ```
 
 ### Examples
 
-Process a specific range of pages:
 ```bash
-python main.py book.pdf --start-page 10 --max-pages 50
+python main.py book.pdf --langs de --paginate      # German book, keep page markers
+python main.py thesis.pdf --skip-epub              # markdown only
+python main.py book/ --skip-md --yes               # rebuild EPUB non-interactively
 ```
 
-Process a multi-language document:
+### Alt-text drafting (optional, needs ANTHROPIC_API_KEY)
+
 ```bash
-python main.py paper.pdf --langs "English,German"
+python -m modules.alt_text book_dir/ --dry-run   # list images missing alt text
+python -m modules.alt_text book_dir/             # draft alt text with Claude
 ```
 
-Convert to markdown only:
-```bash
-python main.py thesis.pdf --skip-epub
-```
+Review the drafts before building the EPUB, then add `"alternativeText"` to
+`accessibility.accessibilityFeature` in description.json.
 
 ### Output Structure
 
@@ -109,59 +84,64 @@ output_directory/
 │   ├── document_name.md
 │   ├── document_name.epub
 │   ├── document_name_metadata.json
+│   ├── description.json        # seeded from PDF metadata — review dc:* fields
 │   └── images/
-│       ├── image1.png
-│       ├── image2.jpg
-│       └── ...
+```
+
+### description.json
+
+mark2epub builds the EPUB from `description.json`. Chapters are objects; the
+optional `"title"` is the TOC label (use ASCII slug filenames), `"bodymatter":
+true` marks the start of content for the landmarks nav, and an
+`"accessibility"` object overrides the schema.org accessibility metadata
+defaults. `"toc_depth": 1` disables the nested TOC level built from `##`
+headings. Chapters may contain pagebreak spans
+(`<span epub:type="pagebreak" role="doc-pagebreak" id="pageN" aria-label="N"></span>`)
+which become an EPUB page-list nav automatically.
+
+```json
+{
+  "metadata": {
+    "dc:title": "…", "dc:creator": "…", "dc:identifier": "isbn-…",
+    "dc:language": "de", "dc:source": "urn:isbn:…", "dc:date": "2020",
+    "dc:rights": "…", "dc:publisher": "…"
+  },
+  "default_css": ["style.css"],
+  "cover_image": "cover.jpeg",
+  "accessibility": {"accessibilitySummary": "…"},
+  "chapters": [
+    {"markdown": "01-kapitel.md", "css": "style.css",
+     "title": "1 Kapitelname", "bodymatter": true}
+  ]
+}
+```
+
+## 🧪 Tests
+
+```bash
+python3 -m unittest discover tests -v
 ```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here's how you can help:
-
-1. Fork the repository
-2. Create a new branch for your feature
-3. Commit your changes
-4. Push to your branch
-5. Create a Pull Request
-
-Please ensure your code follows the existing style and includes appropriate tests.
-
-### Development Setup
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/pdf2epub.git
-cd pdf2epub
-```
-
-2. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
-```
-
-3. Install development dependencies:
-```bash
-pip install -r requirements.txt
-```
+1. Fork the repository, create a branch, commit, push, open a PR.
+2. Please include tests (`tests/test_pipeline.py` builds real EPUBs in temp
+   dirs) and run epubcheck on a sample book.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## 🐛 Known Issues
 
 - Some image embedding might need manual adjustment
-- Some complex mathematical equations might not be perfectly converted
-- Certain PDF layouts with multiple columns may require manual adjustment
-- Font detection might be imperfect in some cases
+- Complex mathematical equations might not be perfectly converted
+- Multi-column layouts may require manual adjustment
+- WebP/SVG images are not bundled (convert to JPEG/PNG first)
+- See `docs/pipeline-improvements.md` for the improvement backlog
 
 ## 🙏 Acknowledgments
 
-This project builds upon several excellent open-source libraries:
 - [marker-pdf](https://github.com/VikParuchuri/marker) for PDF processing
 - [mark2epub](https://github.com/AlexPof/mark2epub) for markdown conversion
 - [PyTorch](https://pytorch.org/) for GPU acceleration
-- [Transformers](https://huggingface.co/transformers) for advanced text processing

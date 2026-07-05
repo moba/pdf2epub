@@ -52,7 +52,43 @@ def main():
         action='store_true',
         help='Skip markdown generation, use existing markdown files'
     )
-    
+    parser.add_argument(
+        '--langs',
+        type=str,
+        default=None,
+        help='Document language(s), comma-separated BCP 47 (first one becomes '
+             'dc:language in the seeded description.json, e.g. "de")'
+    )
+    parser.add_argument(
+        '--use-llm',
+        action='store_true',
+        help='Use marker\'s LLM mode for higher-quality structure '
+             '(default service: Gemini; see --llm-service)'
+    )
+    parser.add_argument(
+        '--llm-service',
+        type=str,
+        default=None,
+        help='marker LLM service class, e.g. '
+             '"marker.services.claude.ClaudeService" (needs its API key config)'
+    )
+    parser.add_argument(
+        '--paginate',
+        action='store_true',
+        help='Keep page boundaries as {N}---- separators in the markdown '
+             '(source for EPUB page-list navigation)'
+    )
+    parser.add_argument(
+        '--no-images',
+        action='store_true',
+        help='Skip image extraction'
+    )
+    parser.add_argument(
+        '--yes', '-y',
+        action='store_true',
+        help='Non-interactive EPUB build: accept description.json as-is'
+    )
+
     args = parser.parse_args()
     
     # Get input path
@@ -90,12 +126,18 @@ def main():
                     markdown_dir,
                     args.max_pages,
                     args.start_page,
+                    language=(args.langs.split(",")[0].strip() if args.langs else None),
+                    use_llm=args.use_llm,
+                    llm_service=args.llm_service,
+                    paginate=args.paginate,
+                    no_images=args.no_images,
                 )
-            
+
             # Convert Markdown to EPUB unless skipped
             if not args.skip_epub:
                 print("Converting Markdown to EPUB...")
-                mark2epub.convert_to_epub(markdown_dir, output_path)
+                mark2epub.convert_to_epub(markdown_dir, output_path,
+                                          non_interactive=args.yes)
                 
         except Exception as e:
             print(f"Error processing {pdf_path.name}: {str(e)}")
