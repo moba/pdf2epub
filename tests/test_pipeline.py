@@ -375,5 +375,37 @@ class TestKapitelSprache(unittest.TestCase):
                 self.assertIn(b'lang="en"', z.read(en))
 
 
+class TestBildkompression(unittest.TestCase):
+
+    def test_standard_bleibt_bei_1800(self):
+        import tempfile
+        from pathlib import Path
+        from PIL import Image
+        from modules.mark2epub import copy_and_optimize_image
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "gross.jpeg"
+            Image.new("RGB", (4000, 2000), (10, 20, 30)).save(src)
+            dst = Path(d) / "out.jpeg"
+            copy_and_optimize_image(src, dst)
+            with Image.open(dst) as img:
+                self.assertEqual(max(img.size), 1800)
+
+    def test_parameter_werden_beachtet(self):
+        import tempfile
+        from pathlib import Path
+        from PIL import Image
+        from modules.mark2epub import copy_and_optimize_image
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "gross.jpeg"
+            Image.new("RGB", (4000, 2000), (10, 20, 30)).save(src)
+            klein = Path(d) / "klein.jpeg"
+            copy_and_optimize_image(src, klein, max_dimension=1200, quality=80)
+            with Image.open(klein) as img:
+                self.assertEqual(max(img.size), 1200)
+            gross = Path(d) / "gross_out.jpeg"
+            copy_and_optimize_image(src, gross, max_dimension=1200, quality=95)
+            self.assertLess(gross.stat().st_size, klein.stat().st_size)
+
+
 if __name__ == "__main__":
     unittest.main()

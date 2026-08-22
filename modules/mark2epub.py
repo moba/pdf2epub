@@ -121,7 +121,7 @@ def process_markdown_for_images(markdown_text: str, work_dir: Path) -> tuple[str
 
     return modified_text, images_found
 
-def copy_and_optimize_image(src_path: Path, dest_path: Path, max_dimension: int = 1800) -> None:
+def copy_and_optimize_image(src_path: Path, dest_path: Path, max_dimension: int = 1800, quality: int = 85) -> None:
     """Copy image to destination path with optimization for EPUB.
     JPEG/PNG are recompressed/downscaled; anything else (GIF, …) is passed
     through unchanged — a rename would break the manifest and markdown refs."""
@@ -142,7 +142,7 @@ def copy_and_optimize_image(src_path: Path, dest_path: Path, max_dimension: int 
             if src_path.suffix.lower() == '.png':
                 img.save(dest_path, 'PNG', optimize=True)
             else:
-                img.save(dest_path, 'JPEG', quality=85, optimize=True)
+                img.save(dest_path, 'JPEG', quality=quality, optimize=True)
 
     except Exception as e:
         print(f"Error processing image {src_path}: {e}")
@@ -809,7 +809,10 @@ def main(args):
                 if src_path.exists():
                     try:
                         dest_path = epub_images_dir / image
-                        copy_and_optimize_image(src_path, dest_path)
+                        copy_and_optimize_image(
+                            src_path, dest_path,
+                            max_dimension=json_data.get("image_max_dimension", 1800),
+                            quality=json_data.get("image_quality", 85))
                         
                         # Store processed image data
                         with open(dest_path, "rb") as f:
