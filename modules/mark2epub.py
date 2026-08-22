@@ -514,35 +514,46 @@ def get_TOCNCX_XML(markdown_filenames, uid="", title="", chapter_titles=None,
              for i, md in enumerate(markdown_filenames)]
 
     tiefe = max([len(groups.get(md, [])) + 1 for md in markdown_filenames] or [1])
-    zaehler = {"n": 0}
+    ordnung = {"n": 0}    # aufsteigender Zähler nur für Blätter (playOrder)
+    id_zaehler = {"n": 0}  # separater, immer hochzählender Zähler für eindeutige ids
 
-    def navpoint(label, src, inhalt=""):
-        zaehler["n"] += 1
-        n = zaehler["n"]
-        return ('<navPoint id="navpoint-{0}" playOrder="{0}">\n'
-                "<navLabel>\n<text>{1}</text>\n</navLabel>"
-                '<content src="{2}"/>{3}</navPoint>').format(
-                    n, xml_escape(label), src, inhalt)
+    def navpoint(label, src, order, inhalt=""):
+        id_zaehler["n"] += 1
+        return ('<navPoint id="navpoint-{0}" playOrder="{1}">\n'
+                "<navLabel>\n<text>{2}</text>\n</navLabel>"
+                '<content src="{3}"/>{4}</navPoint>').format(
+                    id_zaehler["n"], order, xml_escape(label), src, inhalt)
 
     def baue(eintraege, ebene):
-        teile = []
+        """Liefert (xml, erste_playorder) für diesen Teilbaum.
+
+        Nur Kapitel bekommen eine neue Nummer; eine Gruppe übernimmt die ihres
+        ersten Blattes. Andernfalls trügen mehrere navPoints für dasselbe Ziel
+        verschiedene playOrder-Werte — epubcheck RSC-005.
+        """
+        teile, erste = [], None
         i = 0
         while i < len(eintraege):
             pfad, md, idx = eintraege[i]
             if len(pfad) <= ebene:
-                teile.append(navpoint(chapter_titles[idx], hrefs[idx]))
+                ordnung["n"] += 1
+                n = ordnung["n"]
+                teile.append(navpoint(chapter_titles[idx], hrefs[idx], n))
+                erste = erste if erste is not None else n
                 i += 1
                 continue
             j = i
             while (j < len(eintraege) and len(eintraege[j][0]) > ebene
                    and eintraege[j][0][ebene] == pfad[ebene]):
                 j += 1
+            kind_xml, kind_erste = baue(eintraege[i:j], ebene + 1)
             teile.append(navpoint(pfad[ebene], hrefs[eintraege[i][2]],
-                                  "\n" + baue(eintraege[i:j], ebene + 1)))
+                                  kind_erste, "\n" + kind_xml))
+            erste = erste if erste is not None else kind_erste
             i = j
-        return "\n".join(teile)
+        return "\n".join(teile), (erste if erste is not None else 1)
 
-    navmap = baue(_gruppenbaum(markdown_filenames, groups), 0)
+    navmap, _ = baue(_gruppenbaum(markdown_filenames, groups), 0)
 
     toc_ncx = """<?xml version="1.0" encoding="UTF-8"?>\n"""
     toc_ncx += """<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" xml:lang="{}" version="2005-1">\n""".format(lang)

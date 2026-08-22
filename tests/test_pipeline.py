@@ -6,6 +6,7 @@ They build real EPUBs into temp dirs and assert on the zip contents; no mocks.
 """
 import builtins
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -330,6 +331,29 @@ class TestVerschachtelteGruppen(unittest.TestCase):
         treffer = re.search(r'<content src="([^"]+)"', block)
         self.assertIn("a.xhtml", treffer.group(1))
 
+    def test_ncx_gleiches_ziel_gleiche_playorder(self):
+        ncx = get_TOCNCX_XML(MD, uid="u", title="T", chapter_titles=TITEL,
+                             lang="de", groups=GRUPPEN)
+        paare = re.findall(r'playOrder="(\d+)"[^>]*>.*?<content src="([^"]+)"',
+                           ncx, re.S)
+        nach_ziel = {}
+        for order, src in paare:
+            nach_ziel.setdefault(src, set()).add(order)
+        mehrdeutig = {s: v for s, v in nach_ziel.items() if len(v) > 1}
+        self.assertEqual(mehrdeutig, {}, "RSC-005: gleiches Ziel, verschiedene playOrder")
+
+    def test_ncx_playorder_steigt_monoton(self):
+        ncx = get_TOCNCX_XML(MD, uid="u", title="T", chapter_titles=TITEL,
+                             lang="de", groups=GRUPPEN)
+        werte = [int(x) for x in re.findall(r'playOrder="(\d+)"', ncx)]
+        self.assertEqual(werte, sorted(werte), f"nicht monoton: {werte}")
+
+    def test_ncx_ids_bleiben_eindeutig(self):
+        ncx = get_TOCNCX_XML(MD, uid="u", title="T", chapter_titles=TITEL,
+                             lang="de", groups=GRUPPEN)
+        ids = re.findall(r'<navPoint id="([^"]+)"', ncx)
+        self.assertEqual(len(ids), len(set(ids)), "doppelte navPoint-id")
+
 
 class TestKapitelSprache(unittest.TestCase):
 
@@ -397,14 +421,17 @@ class TestBildkompression(unittest.TestCase):
         from modules.mark2epub import copy_and_optimize_image
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / "gross.jpeg"
-            Image.new("RGB", (4000, 2000), (10, 20, 30)).save(src)
+            img = Image.new("RGB", (4000, 2000))
+            img.putdata([((x * 7 + y * 13) % 256, (x * 3) % 256, (y * 5) % 256)
+                         for y in range(2000) for x in range(4000)])
+            img.save(src)
             klein = Path(d) / "klein.jpeg"
             copy_and_optimize_image(src, klein, max_dimension=1200, quality=80)
             with Image.open(klein) as img:
                 self.assertEqual(max(img.size), 1200)
             gross = Path(d) / "gross_out.jpeg"
             copy_and_optimize_image(src, gross, max_dimension=1200, quality=95)
-            self.assertLess(gross.stat().st_size, klein.stat().st_size)
+            self.assertLess(os.path.getsize(klein), os.path.getsize(gross))
 
 
 if __name__ == "__main__":
