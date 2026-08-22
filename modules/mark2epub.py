@@ -420,10 +420,27 @@ p {{
 </body>
 </html>"""
 
+def _gruppenbaum(md_filenames, groups):
+    """[(pfad, md_filename, index)] in Dokumentreihenfolge.
+
+    pfad ist die group-Liste des Kapitels (leer, wenn keine gesetzt ist).
+    """
+    return [(list(groups.get(md, [])), md, i) for i, md in enumerate(md_filenames)]
+
+
+def _gemeinsamer_praefix(a, b):
+    n = 0
+    while n < len(a) and n < len(b) and a[n] == b[n]:
+        n += 1
+    return n
+
+
 def get_TOC_XML(default_css_filenames, markdown_filenames, chapter_titles=None, lang="en", start_index=0,
-                page_list=None, sections=None):
+                page_list=None, sections=None, groups=None):
     ## Returns the XML data for the TOC.xhtml file (EPUB 3 nav document).
     ## sections: {md_filename: [(fragment_id, label), ...]} for a nested level.
+    ## groups: {md_filename: [level1, level2, ...]} for nested TOC groups
+    ##         (e.g. year -> issue -> section) rendered as <span> nodes.
     if chapter_titles is None:
         chapter_titles = [f.split(".")[0] for f in markdown_filenames]
     sections = sections or {}
@@ -437,21 +454,35 @@ def get_TOC_XML(default_css_filenames, markdown_filenames, chapter_titles=None, 
         toc_xhtml += """<link rel="stylesheet" href="css/{}" type="text/css"/>\n""".format(css_filename)
 
     toc_xhtml += """</head>\n<body>\n"""
+    groups = groups or {}
     toc_xhtml += """<nav epub:type="toc" role="doc-toc" id="toc">\n<h2>Contents</h2>\n<ol>"""
     hrefs = []
-    for i,md_filename in enumerate(markdown_filenames):
+    for i, md_filename in enumerate(markdown_filenames):
         stem = md_filename.split(".")[0]
-        href = quote("s{:05d}-{}.xhtml".format(i, stem))
-        hrefs.append(href)
-        toc_xhtml += """<li><a href="{}">{}</a>""".format(href, xml_escape(chapter_titles[i]))
-        chapter_sections = sections.get(md_filename, [])
+        hrefs.append(quote("s{:05d}-{}.xhtml".format(i, stem)))
+
+    offen = []
+    for pfad, md_filename, i in _gruppenbaum(markdown_filenames, groups):
+        gemeinsam = _gemeinsamer_praefix(offen, pfad)
+        for _ in range(len(offen) - gemeinsam):
+            toc_xhtml += "</ol></li>"
+        for stufe in pfad[gemeinsam:]:
+            toc_xhtml += "<li><span>{}</span><ol>".format(xml_escape(stufe))
+        offen = list(pfad)
+
+        href = hrefs[i]
+        toc_xhtml += """<li><a href="{}">{}</a>""".format(
+            href, xml_escape(chapter_titles[i]))
+        chapter_sections = (sections or {}).get(md_filename, [])
         if chapter_sections:
             toc_xhtml += "<ol>"
             for frag_id, label in chapter_sections:
-                # label comes from generated XHTML: already XML-escaped
-                toc_xhtml += """<li><a href="{}#{}">{}</a></li>""".format(href, frag_id, label)
+                toc_xhtml += """<li><a href="{}#{}">{}</a></li>""".format(
+                    href, frag_id, label)
             toc_xhtml += "</ol>"
         toc_xhtml += "</li>"
+    for _ in range(len(offen)):
+        toc_xhtml += "</ol></li>"
     toc_xhtml += """</ol>\n</nav>\n"""
     if hrefs:
         start = min(start_index, len(hrefs) - 1)
@@ -470,30 +501,59 @@ def get_TOC_XML(default_css_filenames, markdown_filenames, chapter_titles=None, 
 
     return toc_xhtml
 
-def get_TOCNCX_XML(markdown_filenames, uid="", title="", chapter_titles=None, lang="en"):
+def get_TOCNCX_XML(markdown_filenames, uid="", title="", chapter_titles=None,
+                   lang="en", groups=None):
     ## Returns the XML data for the TOC.ncx file
+    ## groups: {md_filename: [level1, level2, ...]} for nested navPoints,
+    ##         mirroring get_TOC_XML's groups. A group navPoint's content
+    ##         src points at its first child's href (the NCX has no <span>).
     if chapter_titles is None:
         chapter_titles = [f.split(".")[0] for f in markdown_filenames]
+    groups = groups or {}
+    hrefs = [quote("s{:05d}-{}.xhtml".format(i, md.split(".")[0]))
+             for i, md in enumerate(markdown_filenames)]
+
+    tiefe = max([len(groups.get(md, [])) + 1 for md in markdown_filenames] or [1])
+    zaehler = {"n": 0}
+
+    def navpoint(label, src, inhalt=""):
+        zaehler["n"] += 1
+        n = zaehler["n"]
+        return ('<navPoint id="navpoint-{0}" playOrder="{0}">\n'
+                "<navLabel>\n<text>{1}</text>\n</navLabel>"
+                '<content src="{2}"/>{3}</navPoint>').format(
+                    n, xml_escape(label), src, inhalt)
+
+    def baue(eintraege, ebene):
+        teile = []
+        i = 0
+        while i < len(eintraege):
+            pfad, md, idx = eintraege[i]
+            if len(pfad) <= ebene:
+                teile.append(navpoint(chapter_titles[idx], hrefs[idx]))
+                i += 1
+                continue
+            j = i
+            while (j < len(eintraege) and len(eintraege[j][0]) > ebene
+                   and eintraege[j][0][ebene] == pfad[ebene]):
+                j += 1
+            teile.append(navpoint(pfad[ebene], hrefs[eintraege[i][2]],
+                                  "\n" + baue(eintraege[i:j], ebene + 1)))
+            i = j
+        return "\n".join(teile)
+
+    navmap = baue(_gruppenbaum(markdown_filenames, groups), 0)
 
     toc_ncx = """<?xml version="1.0" encoding="UTF-8"?>\n"""
     toc_ncx += """<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" xml:lang="{}" version="2005-1">\n""".format(lang)
-    toc_ncx += """<head>\n"""
+    toc_ncx += "<head>\n"
     toc_ncx += """<meta name="dtb:uid" content="{}"/>\n""".format(xml_escape(uid))
-    toc_ncx += """<meta name="dtb:depth" content="1"/>\n"""
+    toc_ncx += """<meta name="dtb:depth" content="{}"/>\n""".format(tiefe)
     toc_ncx += """<meta name="dtb:totalPageCount" content="0"/>\n"""
     toc_ncx += """<meta name="dtb:maxPageNumber" content="0"/>\n"""
-    toc_ncx += """</head>\n"""
+    toc_ncx += "</head>\n"
     toc_ncx += """<docTitle><text>{}</text></docTitle>\n""".format(xml_escape(title))
-    toc_ncx += """<navMap>\n"""
-    for i,md_filename in enumerate(markdown_filenames):
-        stem = md_filename.split(".")[0]
-        src = quote("s{:05d}-{}.xhtml".format(i, stem))
-        toc_ncx += """<navPoint id="navpoint-{}" playOrder="{}">\n""".format(i, i + 1)
-        toc_ncx += """<navLabel>\n<text>{}</text>\n</navLabel>""".format(xml_escape(chapter_titles[i]))
-        toc_ncx += """<content src="{}"/>""".format(src)
-        toc_ncx += """ </navPoint>"""
-    toc_ncx += """</navMap>\n</ncx>"""
-
+    toc_ncx += "<navMap>\n" + navmap + "\n</navMap>\n</ncx>"
     return toc_ncx
 
 def convert_math_to_mathml(html_text: str) -> str:
@@ -696,6 +756,7 @@ def main(args):
         # for the TOC label and chapter <title> (default: filename stem).
         all_md_filenames = []
         all_md_titles = []
+        all_md_groups = {}
         all_css_filenames = json_data["default_css"][:]
         bodymatter_start = 0
         for chapter in json_data["chapters"]:
@@ -704,6 +765,8 @@ def main(args):
                 all_md_titles.append(chapter.get("title") or chapter["markdown"].split(".")[0])
                 if chapter.get("bodymatter") and bodymatter_start == 0:
                     bodymatter_start = len(all_md_filenames) - 1
+            if chapter.get("group"):
+                all_md_groups[chapter["markdown"]] = list(chapter["group"])
             if len(chapter["css"]) and (chapter["css"] not in all_css_filenames):
                 all_css_filenames.append(chapter["css"])
         chapter_title_map = dict(zip(all_md_filenames, all_md_titles))
@@ -818,7 +881,8 @@ def main(args):
                 get_TOC_XML(json_data["default_css"], all_md_filenames,
                             chapter_titles=all_md_titles, lang=pub_lang,
                             start_index=bodymatter_start,
-                            page_list=page_list, sections=toc_sections),
+                            page_list=page_list, sections=toc_sections,
+                            groups=all_md_groups),
                 zipfile.ZIP_DEFLATED
             )
 
@@ -828,7 +892,8 @@ def main(args):
                     uid=json_data["metadata"].get("dc:identifier", ""),
                     title=json_data["metadata"].get("dc:title", ""),
                     chapter_titles=all_md_titles,
-                    lang=pub_lang
+                    lang=pub_lang,
+                    groups=all_md_groups
                 ),
                 zipfile.ZIP_DEFLATED
             )

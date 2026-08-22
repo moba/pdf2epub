@@ -272,5 +272,64 @@ class MarkerConfig(unittest.TestCase):
         self.assertNotIn("use_llm", cfg)
 
 
+import re
+
+from modules.mark2epub import get_TOC_XML, get_TOCNCX_XML
+
+MD = ["a.md", "b.md", "c.md"]
+TITEL = ["Erster", "Zweiter", "Dritter"]
+GRUPPEN = {
+    "a.md": ["1998", "1/1998", "Grundlagen"],
+    "b.md": ["1998", "1/1998", "Praxis"],
+    "c.md": ["1999", "1/1999", "Grundlagen"],
+}
+
+
+class TestVerschachtelteGruppen(unittest.TestCase):
+
+    def test_toc_ohne_gruppen_bleibt_flach(self):
+        xhtml = get_TOC_XML(["style.css"], MD, chapter_titles=TITEL, lang="de")
+        self.assertNotIn("<span>", xhtml)
+        # Nur die Haupt-TOC-Liste zählen; die separate Landmarks-Nav
+        # enthält ebenfalls "<li><a" und ist hier nicht der Prüfgegenstand.
+        toc_nav = xhtml.split('<nav epub:type="landmarks"')[0]
+        self.assertEqual(toc_nav.count("<li><a"), 3)
+
+    def test_toc_mit_gruppen_verschachtelt(self):
+        xhtml = get_TOC_XML(["style.css"], MD, chapter_titles=TITEL, lang="de",
+                            groups=GRUPPEN)
+        self.assertIn("<span>1998</span>", xhtml)
+        self.assertIn("<span>1/1998</span>", xhtml)
+        self.assertIn("<span>Grundlagen</span>", xhtml)
+        # 1998 und 1999 je einmal, 1/1998 einmal (zwei Kapitel darunter)
+        self.assertEqual(xhtml.count("<span>1998</span>"), 1)
+        self.assertEqual(xhtml.count("<span>1/1998</span>"), 1)
+        self.assertEqual(xhtml.count("<span>Grundlagen</span>"), 2)
+
+    def test_toc_oeffnende_und_schliessende_tags_sind_ausgeglichen(self):
+        xhtml = get_TOC_XML(["style.css"], MD, chapter_titles=TITEL, lang="de",
+                            groups=GRUPPEN)
+        self.assertEqual(xhtml.count("<ol>"), xhtml.count("</ol>"))
+        self.assertEqual(xhtml.count("<li>"), xhtml.count("</li>"))
+
+    def test_ncx_bildet_die_hierarchie_ab(self):
+        ncx = get_TOCNCX_XML(MD, uid="urn:issn:2191-2963", title="T",
+                             chapter_titles=TITEL, lang="de", groups=GRUPPEN)
+        self.assertIn("<text>1/1998</text>", ncx)
+        self.assertEqual(ncx.count("<navPoint"), ncx.count("</navPoint>"))
+
+    def test_ncx_setzt_dtb_depth_auf_die_echte_tiefe(self):
+        ncx = get_TOCNCX_XML(MD, uid="u", title="T", chapter_titles=TITEL,
+                             lang="de", groups=GRUPPEN)
+        self.assertIn('name="dtb:depth" content="4"', ncx)
+
+    def test_ncx_gruppenknoten_zeigt_auf_erstes_kind(self):
+        ncx = get_TOCNCX_XML(MD, uid="u", title="T", chapter_titles=TITEL,
+                             lang="de", groups=GRUPPEN)
+        block = ncx[ncx.index("<text>1/1998</text>"):]
+        treffer = re.search(r'<content src="([^"]+)"', block)
+        self.assertIn("a.xhtml", treffer.group(1))
+
+
 if __name__ == "__main__":
     unittest.main()
