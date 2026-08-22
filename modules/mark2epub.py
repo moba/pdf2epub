@@ -794,7 +794,7 @@ def main(args):
                 css_files,
                 content=chapter_contents[chapter["markdown"]],
                 title=chapter_title_map.get(chapter["markdown"]),
-                lang=pub_lang
+                lang=chapter.get("language") or pub_lang
             )
             chapter_data[chapter["markdown"]] = chapter_xhtml
             all_referenced_images.update(chapter_images)

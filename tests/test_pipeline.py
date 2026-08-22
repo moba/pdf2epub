@@ -331,5 +331,49 @@ class TestVerschachtelteGruppen(unittest.TestCase):
         self.assertIn("a.xhtml", treffer.group(1))
 
 
+class TestKapitelSprache(unittest.TestCase):
+
+    def test_kapitel_ohne_sprache_erbt_die_buchsprache(self):
+        from modules.mark2epub import get_chapter_XML
+        xhtml, _ = get_chapter_XML(".", "a.md", ["style.css"],
+                                   content="# Titel\n", title="Titel", lang="de")
+        self.assertIn('lang="de"', xhtml)
+        self.assertIn('xml:lang="de"', xhtml)
+
+    def test_kapitel_mit_eigener_sprache(self):
+        from modules.mark2epub import get_chapter_XML
+        xhtml, _ = get_chapter_XML(".", "b.md", ["style.css"],
+                                   content="# Title\n", title="Title", lang="en")
+        self.assertIn('lang="en"', xhtml)
+        self.assertNotIn('lang="de"', xhtml)
+
+    def test_beschreibung_mit_kapitelsprache_wird_durchgereicht(self):
+        """Regression: chapter["language"] muss die Buchsprache überschreiben."""
+        import json, tempfile, os, zipfile
+        from modules.mark2epub import main as m2e_main
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "images"))
+            with open(os.path.join(d, "de.md"), "w") as f:
+                f.write("# Deutsch\n\nText.\n")
+            with open(os.path.join(d, "en.md"), "w") as f:
+                f.write("# English\n\nText.\n")
+            with open(os.path.join(d, "style.css"), "w") as f:
+                f.write("body{}")
+            with open(os.path.join(d, "description.json"), "w") as f:
+                json.dump({
+                    "metadata": {"dc:title": "T", "dc:creator": "A",
+                                 "dc:language": "de", "dc:identifier": "u"},
+                    "default_css": ["style.css"],
+                    "chapters": [
+                        {"markdown": "de.md", "css": "style.css", "title": "Deutsch"},
+                        {"markdown": "en.md", "css": "style.css", "title": "English",
+                         "language": "en"},
+                    ]}, f)
+            m2e_main(["--yes", d, os.path.join(d, "out.epub")])
+            with zipfile.ZipFile(os.path.join(d, "out.epub")) as z:
+                en = [n for n in z.namelist() if n.endswith("en.xhtml")][0]
+                self.assertIn(b'lang="en"', z.read(en))
+
+
 if __name__ == "__main__":
     unittest.main()
