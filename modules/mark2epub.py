@@ -634,7 +634,26 @@ def add_footnote_semantics(html_text: str) -> str:
     html_text = html_text.replace(
         '<a class="footnote-backref"',
         '<a epub:type="backlink" role="doc-backlink" class="footnote-backref"')
+    html_text = drop_dangling_backrefs(html_text)
     return html_text
+
+
+def drop_dangling_backrefs(html_text: str) -> str:
+    """Remove footnote back-links whose reference anchor does not exist.
+
+    A footnote *definition* without its marker in the running text (common
+    in OCR'd sources, where the superscript digit was lost) still renders a
+    back-link to "#fnref:N" — an anchor python-markdown only writes where a
+    marker was found. The note text stays; only the dead link goes, which
+    would otherwise be a broken fragment reference (epubcheck RSC-012).
+    """
+    vorhanden = set(re.findall(r'id="(fnref:[^"]+)"', html_text))
+
+    def ersetze(m):
+        return "" if m.group(1) not in vorhanden else m.group(0)
+
+    return re.sub(r'<a[^>]*class="footnote-backref"[^>]*href="#([^"]+)"[^>]*>'
+                  r'.*?</a>', ersetze, html_text, flags=re.DOTALL)
 
 def rewrite_internal_links(xhtml: str, href_by_md: dict) -> str:
     """Rewrite intra-book links to *.md files to the generated XHTML hrefs.

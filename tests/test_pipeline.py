@@ -490,5 +490,26 @@ class InterneVerweise(BuildCase):
         self.assertIn('href="https://example.org/x.md"', index)
 
 
+class VerwaisteFussnote(BuildCase):
+    """Eine Fussnotendefinition ohne Marke im Text erzeugt in
+    python-markdown einen Ruecksprung auf ein fnref, das es nicht gibt
+    (epubcheck RSC-012). Der Text der Note bleibt, der tote Link geht weg."""
+
+    QUELLE = ("# Eins\n\nText mit Marke[^1].\n\n"
+              "[^1]: Die erste Note.\n\n[^2]: Note ohne Marke im Text.\n")
+
+    def test_toter_ruecksprung_wird_entfernt(self):
+        z = self.build(chapters={"kapitel-eins.md": self.QUELLE})
+        xhtml = z.read("OPS/s00000-kapitel-eins.xhtml").decode()
+        self.assertIn("Note ohne Marke im Text", xhtml)
+        self.assertNotIn('href="#fnref:2"', xhtml)
+
+    def test_gueltiger_ruecksprung_bleibt(self):
+        z = self.build(chapters={"kapitel-eins.md": self.QUELLE})
+        xhtml = z.read("OPS/s00000-kapitel-eins.xhtml").decode()
+        self.assertIn('href="#fnref:1"', xhtml)
+        self.assertIn('id="fnref:1"', xhtml)
+
+
 if __name__ == "__main__":
     unittest.main()
