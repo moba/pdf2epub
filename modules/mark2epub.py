@@ -55,8 +55,13 @@ def get_metadata_from_user(existing_metadata: Optional[Dict] = None, interactive
         "chapters": existing_metadata.get("chapters", []),
         "cover_image": existing_metadata.get("cover_image", None)
     }
-    # Preserve optional keys (e.g. accessibility overrides) across the rewrite
-    for key in ("accessibility", "toc_depth"):
+    # Preserve optional keys across the rewrite. Anything dropped here is
+    # silently lost for the whole build: main() works on this result, not on
+    # the file, so e.g. image_max_dimension would fall back to its default
+    # and every image would be embedded at 1800px/85% regardless of the
+    # description.json.
+    for key in ("accessibility", "toc_depth",
+                "image_max_dimension", "image_quality"):
         if key in existing_metadata:
             result[key] = existing_metadata[key]
     return result

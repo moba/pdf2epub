@@ -434,5 +434,36 @@ class TestBildkompression(unittest.TestCase):
             self.assertLess(os.path.getsize(klein), os.path.getsize(gross))
 
 
+class KompressionImBau(BuildCase):
+    """image_max_dimension/image_quality aus description.json muessen den
+    Umweg ueber get_metadata_from_user ueberleben — sonst greift beim Bau
+    ueber main() still die Voreinstellung 1800/85."""
+
+    def _grosses_bild(self):
+        img = Image.new("RGB", (2400, 1600))
+        img.putdata([((x * 7 + y * 13) % 256, (x * 3) % 256, (y * 5) % 256)
+                     for y in range(1600) for x in range(2400)])
+        img.save(self.dir / "images" / "gross.jpeg")
+
+    def test_konfigurierte_grenze_wirkt_im_gebauten_epub(self):
+        (self.dir / "images").mkdir(parents=True, exist_ok=True)
+        self._grosses_bild()
+        z = self.build(chapters={"kapitel-eins.md": "# Eins\n\n![Muster](gross.jpeg)\n"},
+                       extra={"image_max_dimension": 300, "image_quality": 60})
+        with self.dir.joinpath("aus.jpeg").open("wb") as f:
+            f.write(z.read("OPS/images/gross.jpeg"))
+        with Image.open(self.dir / "aus.jpeg") as img:
+            self.assertEqual(max(img.size), 300)
+
+    def test_schluessel_bleiben_in_der_zurueckgeschriebenen_description(self):
+        (self.dir / "images").mkdir(parents=True, exist_ok=True)
+        self._grosses_bild()
+        self.build(chapters={"kapitel-eins.md": "# Eins\n\n![Muster](gross.jpeg)\n"},
+                   extra={"image_max_dimension": 300, "image_quality": 60})
+        desc = json.loads((self.dir / "description.json").read_text(encoding="utf-8"))
+        self.assertEqual(desc["image_max_dimension"], 300)
+        self.assertEqual(desc["image_quality"], 60)
+
+
 if __name__ == "__main__":
     unittest.main()
