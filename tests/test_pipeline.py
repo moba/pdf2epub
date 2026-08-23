@@ -519,5 +519,37 @@ class VerwaisteFussnote(BuildCase):
         self.assertIn('id="fnref:1"', xhtml)
 
 
+class Landmarken(BuildCase):
+    """Ein Kapitel mit "landmark" gehoert in die landmarks-Navigation —
+    ein Autorenregister am Ende ist sonst nur ueber das Inhaltsverzeichnis
+    zu finden."""
+
+    def bau(self):
+        make_book(self.dir, chapters={
+            "kapitel-eins.md": "# Eins\n\nText.\n",
+            "register.md": "# Index\n\nEintrag.\n"})
+        beschreibung = json.loads(
+            (self.dir / "description.json").read_text(encoding="utf-8"))
+        beschreibung["chapters"][0]["bodymatter"] = True
+        beschreibung["chapters"][1]["landmark"] = "index"
+        beschreibung["chapters"][1]["title"] = "Index der Autoren"
+        (self.dir / "description.json").write_text(
+            json.dumps(beschreibung, ensure_ascii=False), encoding="utf-8")
+        mark2epub.main(["--yes", str(self.dir), str(self.out)])
+        return zipfile.ZipFile(self.out)
+
+    def test_landmarke_zeigt_auf_das_kapitel(self):
+        toc = self.bau().read("OPS/TOC.xhtml").decode()
+        marken = toc[toc.index('epub:type="landmarks"'):]
+        self.assertIn('epub:type="index" href="s00001-register.xhtml"', marken)
+        self.assertIn(">Index der Autoren</a>", marken)
+
+    def test_ohne_angabe_bleiben_die_drei_vorgaben(self):
+        z = self.build()
+        toc = z.read("OPS/TOC.xhtml").decode()
+        marken = toc[toc.index('epub:type="landmarks"'):]
+        self.assertEqual(marken.count("<li>"), 3)
+
+
 if __name__ == "__main__":
     unittest.main()

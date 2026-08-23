@@ -478,7 +478,7 @@ def _gemeinsamer_praefix(a, b):
 
 
 def get_TOC_XML(default_css_filenames, markdown_filenames, chapter_titles=None, lang="en", start_index=0,
-                page_list=None, sections=None, groups=None):
+                page_list=None, sections=None, groups=None, landmarks=None):
     ## Returns the XML data for the TOC.xhtml file (EPUB 3 nav document).
     ## sections: {md_filename: [(fragment_id, label), ...]} for a nested level.
     ## groups: {md_filename: [level1, level2, ...]} for nested TOC groups
@@ -532,6 +532,12 @@ def get_TOC_XML(default_css_filenames, markdown_filenames, chapter_titles=None, 
         toc_xhtml += """<li><a epub:type="cover" href="titlepage.xhtml">Cover</a></li>"""
         toc_xhtml += """<li><a epub:type="toc" href="TOC.xhtml">Table of Contents</a></li>"""
         toc_xhtml += """<li><a epub:type="bodymatter" href="{}">Start of Content</a></li>""".format(hrefs[start])
+        # Weitere Landmarken aus den Kapiteln (chapter["landmark"]), z. B.
+        # ein Autorenregister als "index" — ohne Eintrag ist es nur ueber das
+        # Inhaltsverzeichnis erreichbar.
+        for epub_type, href, label in (landmarks or []):
+            toc_xhtml += """<li><a epub:type="{}" href="{}">{}</a></li>""".format(
+                xml_escape(epub_type), href, xml_escape(label))
         toc_xhtml += """</ol>\n</nav>\n"""
     if page_list:
         toc_xhtml += """<nav epub:type="page-list" hidden="hidden">\n<h2>List of Pages</h2>\n<ol>"""
@@ -983,7 +989,13 @@ def main(args):
                             chapter_titles=all_md_titles, lang=pub_lang,
                             start_index=bodymatter_start,
                             page_list=page_list, sections=toc_sections,
-                            groups=all_md_groups),
+                            groups=all_md_groups,
+                            landmarks=[
+                                (c["landmark"],
+                                 href_by_md[c["markdown"]],
+                                 chapter_title_map.get(c["markdown"], ""))
+                                for c in json_data["chapters"]
+                                if c.get("landmark")]),
                 zipfile.ZIP_DEFLATED
             )
 
