@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 import subprocess
 from typing import Dict, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from xml.sax.saxutils import escape as xml_escape
 import latex2mathml.converter
 
@@ -636,6 +636,25 @@ def add_footnote_semantics(html_text: str) -> str:
         '<a epub:type="backlink" role="doc-backlink" class="footnote-backref"')
     return html_text
 
+def rewrite_internal_links(xhtml: str, href_by_md: dict) -> str:
+    """Rewrite intra-book links to *.md files to the generated XHTML hrefs.
+
+    Markdown chapters link to each other by their source filename (an index
+    or register linking to its articles). Those names do not exist in the
+    EPUB, where every chapter becomes sNNNNN-<stem>.xhtml — left alone, each
+    such link is a dangling reference (epubcheck RSC-007). Fragments are
+    kept, absolute URLs are left untouched.
+    """
+    def ersetze(m):
+        ziel = unquote(m.group(2))
+        href = href_by_md.get(ziel) or href_by_md.get(ziel.split("/")[-1])
+        if href is None:
+            return m.group(0)
+        return '{}"{}{}"'.format(m.group(1), href, m.group(3) or "")
+
+    return re.sub(r'(href=)"(?!\w+:)([^"#]+\.md)(#[^"]*)?"', ersetze, xhtml)
+
+
 def get_chapter_XML(work_dir: str, md_filename: str, css_filenames: list[str], content: Optional[str] = None,
                     title: Optional[str] = None, lang: str = "en") -> tuple[str, list[str]]:
     """
@@ -814,6 +833,13 @@ def main(args):
             )
             chapter_data[chapter["markdown"]] = chapter_xhtml
             all_referenced_images.update(chapter_images)
+
+        # Chapter-to-chapter links: *.md in the markdown, sNNNNN-*.xhtml here
+        href_by_md = {
+            md: quote("s{:05d}-{}.xhtml".format(i, md.split(".")[0]))
+            for i, md in enumerate(all_md_filenames)}
+        for md_filename, xhtml in chapter_data.items():
+            chapter_data[md_filename] = rewrite_internal_links(xhtml, href_by_md)
 
         # Process and optimize images
         print("\nProcessing and optimizing images...")

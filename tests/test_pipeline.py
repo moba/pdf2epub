@@ -465,5 +465,30 @@ class KompressionImBau(BuildCase):
         self.assertEqual(desc["image_quality"], 60)
 
 
+class InterneVerweise(BuildCase):
+    """Links von Kapitel zu Kapitel stehen im Markdown als *.md — im EPUB
+    heissen die Dateien sNNNNN-<stamm>.xhtml. Ohne Umschreibung zeigt jeder
+    Verweis ins Leere (RSC-007)."""
+
+    KAPITEL = {
+        "index.md": "# Index\n\n- [Erster Beitrag](kapitel-eins.md)\n"
+                    "- [Mit Marke](kapitel-eins.md#abschnitt)\n"
+                    "- [Nach draussen](https://example.org/x.md)\n",
+        "kapitel-eins.md": "# Eins\n\n## Abschnitt\n\nText.\n",
+    }
+
+    def test_md_verweis_zeigt_auf_die_erzeugte_xhtml_datei(self):
+        z = self.build(chapters=self.KAPITEL)
+        index = z.read("OPS/s00000-index.xhtml").decode()
+        self.assertIn('href="s00001-kapitel-eins.xhtml"', index)
+        self.assertIn('href="s00001-kapitel-eins.xhtml#abschnitt"', index)
+        self.assertNotIn('href="kapitel-eins.md"', index)
+
+    def test_externer_verweis_bleibt_unangetastet(self):
+        z = self.build(chapters=self.KAPITEL)
+        index = z.read("OPS/s00000-index.xhtml").decode()
+        self.assertIn('href="https://example.org/x.md"', index)
+
+
 if __name__ == "__main__":
     unittest.main()
