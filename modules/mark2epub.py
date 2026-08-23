@@ -425,12 +425,49 @@ p {{
 </body>
 </html>"""
 
+def _falte_einzelkinder(eintraege):
+    """Entfernt Gruppenebenen, die unter ihrem Elternknoten allein stehen.
+
+    Eine Ebene mit genau einem Knoten trennt nichts: sie kostet den Leser
+    einen Aufklappschritt und zeigt danach dieselbe Liste. Im Sammelband
+    tragen 37 von 44 Heften ausschliesslich die Rubrik "Beitraege" — dort ist
+    die Rubrikebene reine Verpackung. Die sieben Hefte ab 2013, die echte
+    Rubriken nebeneinander fuehren (FAMILIENWELTEN, AUS DER PRAXIS, ...),
+    behalten sie.
+
+    Die Faltung wirkt je Zweig: ein Heft mit echten Rubriken hindert ein
+    anderes nicht daran, seine einzelne zu verlieren. Endet ein Kapitel auf
+    der betrachteten Ebene, wird nicht gefaltet — dann ist die Gruppe ein
+    echter Nachbar dieses Kapitels und keine ueberfluessige Huelle.
+
+    Arbeitet auf den Pfadlisten selbst; der Aufrufer bekommt dieselben Objekte
+    zurueck.
+    """
+    def rek(gruppe, tiefe):
+        werte = {tuple(p[:tiefe + 1]) for p, _, _ in gruppe if len(p) > tiefe}
+        endet_hier = any(len(p) <= tiefe for p, _, _ in gruppe)
+        if len(werte) == 1 and not endet_hier:
+            for p, _, _ in gruppe:
+                del p[tiefe]
+            rek(gruppe, tiefe)          # dieselbe Ebene erneut pruefen
+            return
+        for w in werte:
+            teil = [e for e in gruppe if tuple(e[0][:tiefe + 1]) == w]
+            rek(teil, tiefe + 1)
+
+    rek(eintraege, 0)
+    return eintraege
+
+
 def _gruppenbaum(md_filenames, groups):
     """[(pfad, md_filename, index)] in Dokumentreihenfolge.
 
     pfad ist die group-Liste des Kapitels (leer, wenn keine gesetzt ist).
+    Ebenen, die unter ihrem Elternknoten allein stehen, sind entfernt.
     """
-    return [(list(groups.get(md, [])), md, i) for i, md in enumerate(md_filenames)]
+    eintraege = [(list(groups.get(md, [])), md, i)
+                 for i, md in enumerate(md_filenames)]
+    return _falte_einzelkinder(eintraege)
 
 
 def _gemeinsamer_praefix(a, b):

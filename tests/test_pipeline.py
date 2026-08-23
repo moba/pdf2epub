@@ -277,11 +277,16 @@ import re
 
 from modules.mark2epub import get_TOC_XML, get_TOCNCX_XML
 
-MD = ["a.md", "b.md", "c.md"]
-TITEL = ["Erster", "Zweiter", "Dritter"]
+# Reihenfolge = Gruppenreihenfolge. Steht ein Kapitel eines anderen
+# Jahrgangs dazwischen, oeffnet und schliesst die Gruppe zweimal.
+MD = ["a.md", "b.md", "d.md", "c.md"]
+TITEL = ["Erster", "Zweiter", "Vierter", "Dritter"]
+# Zwei Hefte, damit die Heftebene echte Geschwister hat: seit dem Falten der
+# Einzelkind-Gruppen verschwaende ein Baum mit nur einem Heft diese Ebene.
 GRUPPEN = {
     "a.md": ["1998", "1/1998", "Grundlagen"],
     "b.md": ["1998", "1/1998", "Praxis"],
+    "d.md": ["1998", "2/1998", "Grundlagen"],
     "c.md": ["1999", "1/1999", "Grundlagen"],
 }
 
@@ -294,7 +299,7 @@ class TestVerschachtelteGruppen(unittest.TestCase):
         # Nur die Haupt-TOC-Liste zählen; die separate Landmarks-Nav
         # enthält ebenfalls "<li><a" und ist hier nicht der Prüfgegenstand.
         toc_nav = xhtml.split('<nav epub:type="landmarks"')[0]
-        self.assertEqual(toc_nav.count("<li><a"), 3)
+        self.assertEqual(toc_nav.count("<li><a"), 4)
 
     def test_toc_mit_gruppen_verschachtelt(self):
         xhtml = get_TOC_XML(["style.css"], MD, chapter_titles=TITEL, lang="de",
@@ -303,9 +308,12 @@ class TestVerschachtelteGruppen(unittest.TestCase):
         self.assertIn("<span>1/1998</span>", xhtml)
         self.assertIn("<span>Grundlagen</span>", xhtml)
         # 1998 und 1999 je einmal, 1/1998 einmal (zwei Kapitel darunter)
+        # 1/1999 faellt weg: einziges Heft unter 1999.
         self.assertEqual(xhtml.count("<span>1998</span>"), 1)
         self.assertEqual(xhtml.count("<span>1/1998</span>"), 1)
-        self.assertEqual(xhtml.count("<span>Grundlagen</span>"), 2)
+        # Grundlagen steht unter 1/1998, 2/1998 und 1/1999;
+        # unter 2/1998 und 1/1999 ist es die einzige Rubrik und faellt weg.
+        self.assertEqual(xhtml.count("<span>Grundlagen</span>"), 1)
 
     def test_toc_oeffnende_und_schliessende_tags_sind_ausgeglichen(self):
         xhtml = get_TOC_XML(["style.css"], MD, chapter_titles=TITEL, lang="de",
