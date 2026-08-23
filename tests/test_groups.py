@@ -36,11 +36,12 @@ def test_faltung_wirkt_je_zweig_getrennt():
               "b.md": ["2016", "2/2016", "FAMILIENWELTEN"],
               "c.md": ["2016", "2/2016", "AUS DER PRAXIS"]}
     baum = _gruppenbaum(["a.md", "b.md", "c.md"], groups)
-    # Beide Jahrgaenge verlieren ihre einzige Heftebene; 2016 behaelt seine
-    # beiden Rubriken, 2015 verliert die einzelne.
-    assert [p for p, _, _ in baum] == [["2015"],
-                                       ["2016", "FAMILIENWELTEN"],
-                                       ["2016", "AUS DER PRAXIS"]]
+    # Die Heftebene bleibt in beiden Jahrgaengen, weil "1/2015" bzw. "2/2016"
+    # den Jahrgang benennen und zusaetzlich die Heftnummer tragen. 2016 behaelt
+    # seine beiden Rubriken, 2015 verliert die einzelne.
+    assert [p for p, _, _ in baum] == [["2015", "1/2015"],
+                                       ["2016", "2/2016", "FAMILIENWELTEN"],
+                                       ["2016", "2/2016", "AUS DER PRAXIS"]]
 
 
 def test_alles_gleich_faltet_vollstaendig():
@@ -55,3 +56,20 @@ def test_kapitel_ohne_gruppe_verhindert_die_faltung():
     groups = {"a.md": [], "b.md": ["Beiträge"]}
     baum = _gruppenbaum(["a.md", "b.md"], groups)
     assert [p for p, _, _ in baum] == [[], ["Beiträge"]]
+
+
+def test_kennzeichnende_bezeichnung_wird_nicht_gefaltet():
+    """Ein Jahrgang mit nur einem Heft darf die Heftbezeichnung nicht verlieren.
+
+    "1/2017" enthaelt den Namen des Elternknotens "2017" und traegt darueber
+    hinaus die Heftnummer — eine Kennzeichnung, die der Elternknoten nicht
+    hat. "Beitraege" traegt nichts und faellt weg.
+    """
+    from modules.mark2epub import _gruppenbaum
+    groups = {"a.md": ["Teil", "2016", "1/2016", "Beiträge"],
+              "b.md": ["Teil", "2016", "2/2016", "Beiträge"],
+              "c.md": ["Teil", "2017", "1/2017", "Beiträge"]}
+    baum = _gruppenbaum(["a.md", "b.md", "c.md"], groups)
+    assert [p for p, _, _ in baum] == [["2016", "1/2016"],
+                                       ["2016", "2/2016"],
+                                       ["2017", "1/2017"]]

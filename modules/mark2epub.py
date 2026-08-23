@@ -425,6 +425,27 @@ p {{
 </body>
 </html>"""
 
+def _kennzeichnend(gruppe, tiefe):
+    """Traegt die Bezeichnung auf dieser Ebene eine eigene Kennzeichnung?
+
+    Ein Jahrgang mit nur einem Heft hat auf der Heftebene genau einen Knoten —
+    nach der reinen Einzelkind-Regel fiele "1/2017" weg und die Heftnummer
+    waere nirgends mehr zu sehen. Die Bezeichnung enthaelt aber den Namen des
+    Elternknotens ("2017") und darueber hinaus die Heftnummer: sie kennzeichnet
+    also etwas, das der Elternknoten nicht kennzeichnet, und bleibt stehen.
+
+    "Beitraege" unter "1/1998" enthaelt den Elternnamen nicht und traegt nichts
+    bei — die Ebene faellt weg.
+    """
+    if tiefe == 0:
+        return False
+    for pfad, _, _ in gruppe:
+        if len(pfad) > tiefe:
+            eltern, kind = pfad[tiefe - 1], pfad[tiefe]
+            return eltern.lower() in kind.lower() and eltern.lower() != kind.lower()
+    return False
+
+
 def _falte_einzelkinder(eintraege):
     """Entfernt Gruppenebenen, die unter ihrem Elternknoten allein stehen.
 
@@ -446,7 +467,7 @@ def _falte_einzelkinder(eintraege):
     def rek(gruppe, tiefe):
         werte = {tuple(p[:tiefe + 1]) for p, _, _ in gruppe if len(p) > tiefe}
         endet_hier = any(len(p) <= tiefe for p, _, _ in gruppe)
-        if len(werte) == 1 and not endet_hier:
+        if len(werte) == 1 and not endet_hier and not _kennzeichnend(gruppe, tiefe):
             for p, _, _ in gruppe:
                 del p[tiefe]
             rek(gruppe, tiefe)          # dieselbe Ebene erneut pruefen
