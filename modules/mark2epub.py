@@ -498,6 +498,21 @@ def _gemeinsamer_praefix(a, b):
     return n
 
 
+_Jahr = re.compile(r"^\d{4}$")
+_Heft = re.compile(r"^\d{1,2}/\d{4}$")
+
+
+def _ist_jahr_oder_heft(label: str) -> bool:
+    """Ist die Gruppenebene eine Jahres- oder Heftangabe?
+
+    Nur diese beiden Ebenen erscheinen in der Navigation als Klickziel
+    (Sprung an den Anfang der Gruppe). Sammlungsteil und Rubrik bleiben
+    Beschriftung — ein Rubrikklickziel wuerde die Spine-Reihenfolge der
+    Navigation verletzen (epubcheck NAV-011).
+    """
+    return bool(_Jahr.match(label.strip()) or _Heft.match(label.strip()))
+
+
 def get_TOC_XML(default_css_filenames, markdown_filenames, chapter_titles=None, lang="en", start_index=0,
                 page_list=None, sections=None, groups=None, landmarks=None):
     ## Returns the XML data for the TOC.xhtml file (EPUB 3 nav document).
@@ -524,13 +539,36 @@ def get_TOC_XML(default_css_filenames, markdown_filenames, chapter_titles=None, 
         stem = md_filename.split(".")[0]
         hrefs.append(quote("s{:05d}-{}.xhtml".format(i, stem)))
 
+    # Für jede Gruppe die Ziel-Adresse des ERSTEN Artikels darunter vorab
+    # berechnen, damit die Gruppenebenen (Jahr, Heft, Rubrik) nicht nur als
+    # Beschriftung, sondern als klickbarer Sprung an den Anfang der Gruppe
+    # erscheinen. Ein Pfad-Präfix zeigt auf den ersten Artikel, dessen
+    # Gruppenpfad mit diesem Präfix beginnt.
+    erste_je_pfad: dict[tuple[str, ...], str] = {}
+    for pfad, _md, i in _gruppenbaum(markdown_filenames, groups):
+        for n in range(len(pfad)):
+            prefix = tuple(pfad[:n + 1])
+            if prefix not in erste_je_pfad:
+                erste_je_pfad[prefix] = hrefs[i]
+
     offen = []
     for pfad, md_filename, i in _gruppenbaum(markdown_filenames, groups):
         gemeinsam = _gemeinsamer_praefix(offen, pfad)
         for _ in range(len(offen) - gemeinsam):
             toc_xhtml += "</ol></li>"
-        for stufe in pfad[gemeinsam:]:
-            toc_xhtml += "<li><span>{}</span><ol>".format(xml_escape(stufe))
+        for k, stufe in enumerate(pfad[gemeinsam:]):
+            # Nur Jahr und Heft sind klickbar (der Auftraggeber will die
+            # Jahres- und Heftangaben in der Navigation als Sprungziele);
+            # Sammlungsteil und Rubrik bleiben Beschriftung. Rubrik-Labels
+            # wuerden sonst auf eine Stelle VOR dem vorherigen Eintrag in
+            # Spine-Reihenfolge verweisen (epubcheck NAV-011).
+            if _ist_jahr_oder_heft(stufe):
+                prefix = tuple(pfad[:gemeinsam + k + 1])
+                ziel = erste_je_pfad.get(prefix, hrefs[i])
+                toc_xhtml += ("""<li><a href="{}">{}</a><ol>"""
+                              ).format(ziel, xml_escape(stufe))
+            else:
+                toc_xhtml += "<li><span>{}</span><ol>".format(xml_escape(stufe))
         offen = list(pfad)
 
         href = hrefs[i]

@@ -304,16 +304,21 @@ class TestVerschachtelteGruppen(unittest.TestCase):
     def test_toc_mit_gruppen_verschachtelt(self):
         xhtml = get_TOC_XML(["style.css"], MD, chapter_titles=TITEL, lang="de",
                             groups=GRUPPEN)
-        self.assertIn("<span>1998</span>", xhtml)
-        self.assertIn("<span>1/1998</span>", xhtml)
+        # Jahr und Heft sind Klickziele: sie springen zum ersten Artikel der
+        # jeweiligen Gruppe. Sammlungsteil und Rubrik bleiben Beschriftung
+        # (<span>), sonst verletzt ihr Klickziel die Spine-Reihenfolge (NAV-011).
+        self.assertIn('<a href="s00000-a.xhtml">1998</a>', xhtml)
+        self.assertIn('<a href="s00000-a.xhtml">1/1998</a>', xhtml)
+        self.assertIn('<a href="s00002-d.xhtml">2/1998</a>', xhtml)
+        self.assertIn('<a href="s00003-c.xhtml">1999</a>', xhtml)
+        # Rubriken bleiben Beschriftung (kein Klickziel).
         self.assertIn("<span>Grundlagen</span>", xhtml)
-        # 1998 und 1999 je einmal, 1/1998 einmal (zwei Kapitel darunter)
-        # 1/1999 faellt weg: einziges Heft unter 1999.
-        self.assertEqual(xhtml.count("<span>1998</span>"), 1)
-        self.assertEqual(xhtml.count("<span>1/1998</span>"), 1)
-        # Grundlagen steht unter 1/1998, 2/1998 und 1/1999;
-        # unter 2/1998 und 1/1999 ist es die einzige Rubrik und faellt weg.
-        self.assertEqual(xhtml.count("<span>Grundlagen</span>"), 1)
+        self.assertIn("<span>Praxis</span>", xhtml)
+        self.assertNotIn('<a href="s00000-a.xhtml">Grundlagen</a>', xhtml)
+        # Jahr/Heft je einmal; 1/1999 faellt weg (einziges Heft unter 1999).
+        self.assertEqual(xhtml.count('<a href="s00000-a.xhtml">1998</a>'), 1)
+        self.assertEqual(xhtml.count('<a href="s00000-a.xhtml">1/1998</a>'), 1)
+        # Jede Gruppe zeigt auf den ERSTEN Artikel darunter.
 
     def test_toc_oeffnende_und_schliessende_tags_sind_ausgeglichen(self):
         xhtml = get_TOC_XML(["style.css"], MD, chapter_titles=TITEL, lang="de",
