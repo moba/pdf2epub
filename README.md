@@ -3,6 +3,21 @@
 Convert PDF files to nicely structured Markdown and accessible EPUB 3 with
 intelligent layout detection.
 
+> **This is a fork** of [overcuriousity/pdf2epub](https://github.com/overcuriousity/pdf2epub)
+> (MIT), itself built on [AlexPof/mark2epub](https://github.com/AlexPof/mark2epub).
+> The fork reworks the EPUB side for EPUB 3.3 / EPUB Accessibility 1.1:
+> language tags from `dc:language` instead of a hardcoded `"en"`, schema.org
+> accessibility metadata, a landmarks nav, hierarchical TOC/NCX groups
+> (`chapter.group`), per-chapter `xml:lang`, page-list navigation from
+> `pagebreak` spans, popup footnote semantics, cross-chapter link rewriting,
+> configurable image compression, a non-interactive `--yes` mode, and an
+> alt-text drafting pass. See `docs/pipeline-improvements.md` for what was
+> changed and what is still open.
+>
+> Companion repository: [pdf2epub-cleanup-skill](https://github.com/moba/pdf2epub-cleanup-skill)
+> — the Claude Code skill that drives this pipeline and cleans up its markdown
+> before the EPUB build.
+
 ## ✨ Features
 
 - 📖 Smart layout detection for books and academic papers (marker-pdf 1.x)
