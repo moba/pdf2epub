@@ -33,19 +33,98 @@ intelligent layout detection.
 
 ## 🛠️ Dependencies
 
-- Python 3.10+
+- Python 3.10–3.14 (3.13 recommended, see below)
 - PyTorch (with CUDA/ROCm/MPS support for GPU acceleration)
-- marker-pdf 1.10.x
-- markdown, latex2mathml, Pillow, pypdfium2, regex
-- Optional: `anthropic` (alt-text drafting), `epubcheck` (validation)
+- marker-pdf==1.10.2
+- transformers==4.57.6
+- markdown==3.10.2
+- latex2mathml==3.81.0
+- Pillow, pypdfium2, regex
+- Optional: `anthropic` (alt-text drafting), `epubcheck` and `@daisy/ace`
+  (validation)
+
+### ⚠️ Python version
+
+Python 3.13 is recommended.
+
+`marker-pdf` constrains `Pillow<11.0.0`, and Pillow only ships Python 3.14
+wheels from 11.3.0 onward. On Python 3.10–3.13 every dependency installs as a
+prebuilt wheel. On 3.14, pip has to build Pillow from source instead: this
+works, but it is slower and requires a working C toolchain plus the image
+library headers Pillow links against. On Debian/Ubuntu install them first:
+
+```bash
+sudo apt install libjpeg-dev zlib1g-dev libtiff-dev libfreetype6-dev libwebp-dev
+```
+
+Without these headers the install fails with
+`RequiredDependencyException: The headers or library files could not be found for jpeg`.
 
 ## 💻 Installation
 
+1. Create and activate a virtual environment.
+
+On Linux/Mac:
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+```
+
+On Windows:
+```powershell
+py -3.13 -m venv .venv
+.venv\Scripts\activate
+```
+
+2. Install Python dependencies (this installs PyTorch as well):
 ```bash
 pip install -r requirements.txt
 ```
 
-For GPU-specific PyTorch builds see [pytorch.org](https://pytorch.org/get-started/locally/).
+3. GPU acceleration (optional):
+
+PyTorch is installed as a dependency in step 2. On Apple Silicon that wheel
+already supports MPS, so no further action is needed. For a specific CUDA or
+ROCm build, reinstall PyTorch using the selector at
+[pytorch.org/get-started/locally](https://pytorch.org/get-started/locally/).
+For example, for AMD GPUs with ROCm:
+```bash
+pip uninstall torch torchvision torchaudio
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+```
+
+4. Verify GPU support:
+```python
+import torch
+print(torch.__version__)  # PyTorch version
+print(torch.cuda.is_available())  # Should return True for NVIDIA
+print(torch.backends.mps.is_available())  # Should return True for Apple Silicon
+print(torch.version.hip)  # Should print ROCm version for AMD
+```
+
+### 🐳 Docker
+
+A CPU-only image can be built from the included `Dockerfile`:
+
+```bash
+docker build -t pdf2epub .
+```
+
+Run it with your PDFs mounted at `/data` and a model cache volume (marker-pdf
+downloads its models on first run):
+
+```bash
+docker run -it --rm \
+  -v "$(pwd)":/data \
+  -v pdf2epub-models:/models \
+  pdf2epub input.pdf
+```
+
+`-it` is required for EPUB generation because metadata is prompted
+interactively; with `--yes` or `--skip-epub` it can run non-interactively.
+
+Tagged releases are published to `ghcr.io/<owner>/pdf2epub` by the Docker
+workflow (the image name follows whichever repository it runs in).
 
 ## 🚀 Usage
 
@@ -58,9 +137,17 @@ python main.py input_directory/    # every PDF in a directory
 
 ### Options
 
-```
+EPUB generation prompts interactively for metadata (title, author, language,
+and so on; press Enter to accept each default). It therefore needs a terminal —
+without `--yes` a non-interactive run fails with `EOFError`. Use `--yes` to
+build from `description.json` as-is, or `--skip-epub` for markdown only.
+
+### Advanced Options
+
+```bash
 python main.py [input_path] [output_path] [options]
 
+Options:
   --max-pages INT      Maximum number of pages to process
   --start-page INT     Page to start from (requires --max-pages)
   --skip-epub          Only create markdown
@@ -72,6 +159,8 @@ python main.py [input_path] [output_path] [options]
   --no-images          Skip image extraction
   --yes, -y            Non-interactive EPUB build (description.json as-is)
 ```
+
+If `input_path` is omitted, all PDFs in `./input/` are processed.
 
 ### Examples
 

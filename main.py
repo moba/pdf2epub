@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import sys
 from pathlib import Path
 import modules.pdf2md as pdf2md
 import modules.mark2epub as mark2epub
@@ -10,7 +11,7 @@ import torch
 def main():
     if torch.cuda.is_available():
         print("CUDA is available. Using GPU for processing.")
-    elif torch.mps.is_available():
+    elif torch.backends.mps.is_available():
         print("MPS is available. Using Apple Silicon for processing.")
     else:
         print("CUDA is not available. Using CPU for processing.")
@@ -99,6 +100,7 @@ def main():
     print(f"Found {len(queue)} PDF files to process")
     
     # Process each PDF
+    failed = []
     for pdf_path in queue:
         print(f"\nProcessing: {pdf_path.name}")
         
@@ -114,7 +116,8 @@ def main():
             # Check if markdown directory exists when skipping MD generation
             if args.skip_md:
                 if not markdown_dir.exists():
-                    print(f"Error: Markdown directory not found: {markdown_dir}")
+                    print(f"Error: Markdown directory not found: {markdown_dir}", file=sys.stderr)
+                    failed.append(pdf_path.name)
                     continue
                 print(f"Using existing markdown files from: {markdown_dir}")
                 
@@ -140,8 +143,18 @@ def main():
                                           non_interactive=args.yes)
                 
         except Exception as e:
-            print(f"Error processing {pdf_path.name}: {str(e)}")
+            print(f"Error processing {pdf_path.name}: {str(e)}", file=sys.stderr)
+            failed.append(pdf_path.name)
             continue
+
+    if failed:
+        print(
+            f"\nFailed to process {len(failed)} of {len(queue)} PDF file(s):",
+            file=sys.stderr,
+        )
+        for name in failed:
+            print(f"  - {name}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

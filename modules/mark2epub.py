@@ -10,7 +10,7 @@ import regex as re
 from pathlib import Path
 from datetime import datetime, timezone
 import subprocess
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 from urllib.parse import quote, unquote
 from xml.sax.saxutils import escape as xml_escape
 import latex2mathml.converter
@@ -74,7 +74,12 @@ def review_markdown(markdown_path: Path) -> tuple[bool, str]:
         response = input("\nWould you like to review the markdown file before conversion? (y/n): ").lower()
         if response in ['y', 'yes']:
             try:
-                subprocess.run(['xdg-open' if os.name == 'posix' else 'start', str(markdown_path)], check=True)
+                if sys.platform == 'darwin':
+                    subprocess.run(['open', str(markdown_path)], check=True)
+                elif os.name == 'posix':
+                    subprocess.run(['xdg-open', str(markdown_path)], check=True)
+                else:
+                    os.startfile(str(markdown_path))
                 
                 while True:
                     proceed = input("\nPress Enter when you're done editing (or 'q' to abort): ").lower()
@@ -1095,7 +1100,7 @@ pre, code { font-family: monospace; font-size: 0.9em; }
 
         print(f"\nEPUB creation complete: {output_path}")
         
-    except Exception as e:
+    except Exception:
         import traceback
         print(f"Error processing {work_dir}:")
         print(traceback.format_exc())
